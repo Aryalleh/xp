@@ -11,6 +11,7 @@ use App\Http\Controllers\DocumentController;
 use App\Http\Controllers\Auth\LoginController;
 use App\Http\Controllers\FixerController;
 use App\Http\Controllers\ProccessController;
+use App\Http\Controllers\NodeController;
 
 /*
 |--------------------------------------------------------------------------
@@ -118,7 +119,8 @@ Route::prefix("$panel")->group(function()
     Route::get('/reboot',[DahboardController::class,'reboot'])->name('server.reboot');
     Route::get('/proccess/active/all',[ProccessController::class,'prcs_active_user'])->name('proccess.active.all');
 
-
+    Route::resource('nodes', NodeController::class);
+    Route::get('/nodes/test/{id}', [NodeController::class, 'testConnection'])->name('nodes.test');
 
 });
 Route::prefix('api')->group(function()

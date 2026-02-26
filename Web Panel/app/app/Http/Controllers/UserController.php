@@ -19,6 +19,7 @@ use Verta;
 use SimpleSoftwareIO\QrCode\Facades\QrCode;
 use Yajra\DataTables\Facades\DataTables;
 use App\Http\Controllers\ProController;
+use App\Services\NodeService;
 
 
 
@@ -330,6 +331,21 @@ class UserController extends Controller
             Process::run("sudo adduser --disabled-password --gecos '' --shell /usr/sbin/nologin {$user->username}");
             Process::input($user->password."\n".$user->password."\n")->timeout(120)->run("sudo passwd {$user->username}");
             Process::run("sudo xp_user_limit add {$user->username} {$request->multiuser}");
+
+            // Sync to nodes
+            NodeService::sync('adduser', [
+                'username' => $request->username,
+                'password' => $request->password,
+                'email' => $request->email,
+                'mobile' => $request->mobile,
+                'multiuser' => $request->multiuser,
+                'connection_start' => $request->connection_start,
+                'traffic' => $traffic,
+                'expdate' => $end_date,
+                'type_traffic' => 'mb', // Already converted if needed
+                'desc' => $request->desc
+            ]);
+
             DB::commit();
         }
         if (!empty($request->email) && $request->email !== null && env('MAIL_STATUS')== 'on')
@@ -547,6 +563,8 @@ class UserController extends Controller
                 Process::run("sudo adduser --disabled-password --gecos '' --shell /usr/sbin/nologin {$username}");
                 Process::input($password."\n".$password."\n")->timeout(120)->run("sudo passwd {$username}");
                 Process::run("sudo xp_user_limit add {$username} {$multiuser}");
+
+                NodeService::sync('active', ['username' => $username]);
             }
         }
         else{
@@ -576,6 +594,8 @@ class UserController extends Controller
                 Process::run("sudo adduser --disabled-password --gecos '' --shell /usr/sbin/nologin {$username}");
                 Process::input($password."\n".$password."\n")->timeout(120)->run("sudo passwd {$username}");
                 Process::run("sudo xp_user_limit add {$username} {$multiuser}");
+
+                NodeService::sync('active', ['username' => $username]);
             }
         }
 
@@ -646,6 +666,8 @@ class UserController extends Controller
                 Process::run("sudo timeout 10 killall -u {$username}");
                 Process::run("sudo userdel -r {$username}");
                 Process::run("sudo xp_user_limit del {$username} {$multiuser}");
+
+                NodeService::sync('deactive', ['username' => $username]);
             }
         }
         else{
@@ -672,6 +694,8 @@ class UserController extends Controller
                 Process::run("sudo timeout 10 killall -u {$username}");
                 Process::run("sudo userdel -r {$username}");
                 Process::run("sudo xp_user_limit del {$username} {$multiuser}");
+
+                NodeService::sync('deactive', ['username' => $username]);
             }
         }
         return redirect()->back()->with('success', 'Deactivated');
@@ -711,6 +735,7 @@ class UserController extends Controller
                 if (file_exists("/var/www/html/app/storage/banner/{$username}-detail")) {
                     Process::run("sudo rm -rf /var/www/html/app/storage/banner/{$username}-detail");
                 }
+                NodeService::sync('retraffic', ['username' => $username]);
             }
         }
         else
@@ -722,6 +747,7 @@ class UserController extends Controller
                 if (file_exists("/var/www/html/app/storage/banner/{$username}-detail")) {
                     Process::run("sudo rm -rf /var/www/html/app/storage/banner/{$username}-detail");
                 }
+                NodeService::sync('retraffic', ['username' => $username]);
             }
         }
         return redirect()->back()->with('success', 'Reset Traffic');
@@ -818,6 +844,7 @@ class UserController extends Controller
                     Traffic::where('username', $username)->delete();
                     Process::run("sudo xp_user_limit del {$username} {$multiuser}");
                 }
+                NodeService::sync('delete', ['username' => $username]);
             }
         }
         else {
@@ -856,6 +883,7 @@ class UserController extends Controller
                     Traffic::where('username', $username)->delete();
                     Process::run("sudo xp_user_limit del {$username} {$multiuser}");
                 }
+                NodeService::sync('delete', ['username' => $username]);
             }
         }
         return redirect()->back()->with('success', 'Deleted');
@@ -1271,6 +1299,13 @@ class UserController extends Controller
                     Traffic::where('username', $request->username_re)->update(['download' => '0', 'upload' => '0', 'total' => '0']);
 
                 }
+
+                NodeService::sync('renewal', [
+                    'username' => $request->username_re,
+                    'day_date' => $request->day_date,
+                    're_date' => $request->re_date,
+                    're_traffic' => $request->re_traffic
+                ]);
             }
         }
         else
@@ -1310,6 +1345,13 @@ class UserController extends Controller
                     Traffic::where('username', $request->username_re)->update(['download' => '0', 'upload' => '0', 'total' => '0']);
 
                 }
+
+                NodeService::sync('renewal', [
+                    'username' => $request->username_re,
+                    'day_date' => $request->day_date,
+                    're_date' => $request->re_date,
+                    're_traffic' => $request->re_traffic
+                ]);
             }
         }
 
@@ -1602,6 +1644,19 @@ class UserController extends Controller
                 if ($username[0]->password != $request->password) {
                     Process::input($request->password."\n".$request->password."\n")->timeout(120)->run("sudo passwd {$request->username}");
                 }
+
+                NodeService::sync('edituser', [
+                    'username' => $request->username,
+                    'password' => $request->password,
+                    'email' => $request->email,
+                    'mobile' => $request->mobile,
+                    'multiuser' => $request->multiuser,
+                    'traffic' => $traffic,
+                    'expdate' => $end_date,
+                    'type_traffic' => 'mb',
+                    'activate' => $request->activate,
+                    'desc' => $request->desc
+                ]);
             }
         }
         else
@@ -1635,6 +1690,19 @@ class UserController extends Controller
                     Process::input($request->password."\n".$request->password."\n")->timeout(120)->run("sudo passwd {$request->username}");
                     Process::run("sudo xp_user_limit add {$request->username} {$request->multiuser}");
                 }
+
+                NodeService::sync('edituser', [
+                    'username' => $request->username,
+                    'password' => $request->password,
+                    'email' => $request->email,
+                    'mobile' => $request->mobile,
+                    'multiuser' => $request->multiuser,
+                    'traffic' => $traffic,
+                    'expdate' => $end_date,
+                    'type_traffic' => 'mb',
+                    'activate' => $request->activate,
+                    'desc' => $request->desc
+                ]);
             }
         }
         return redirect()->back()->with('success', 'Update Success');
