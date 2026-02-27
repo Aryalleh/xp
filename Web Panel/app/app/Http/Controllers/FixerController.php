@@ -471,127 +471,133 @@ $day
     }
     public function synstraffics_drop()
     {
-        $trafficLogFilePath = "/var/www/html/app/storage/out.json";
-        $dropbearJsonFilePath = "/var/www/html/app/storage/dropbear.json";
+        // Use MySQL GET_LOCK to prevent cron overlap across multiple panel servers.
+        if (!$this->acquireDbLock('xpanel:traffic')) {
+            return;
+        }
 
-        if (file_exists($trafficLogFilePath) && file_exists($dropbearJsonFilePath)) {
-            $trafficLog = file_get_contents($trafficLogFilePath);
-            $trafficEntries = explode(PHP_EOL, $trafficLog);
-            $trafficEntries = array_filter($trafficEntries); // حذف خطوط خالی
-            $lastEntry = end($trafficEntries); // استفاده از end برای آخرین مورد معتبر
+        try {
+            $deltaSum = 0;
+            $trafficLogFilePath = "/var/www/html/app/storage/out.json";
+            $dropbearJsonFilePath = "/var/www/html/app/storage/dropbear.json";
 
-            $trafficData = json_decode($lastEntry, true);
-            $traffic_base = env('TRAFFIC_BASE');
+            if (file_exists($trafficLogFilePath) && file_exists($dropbearJsonFilePath)) {
+                $trafficLog = file_get_contents($trafficLogFilePath);
+                $trafficEntries = explode(PHP_EOL, $trafficLog);
+                $trafficEntries = array_filter($trafficEntries); // حذف خطوط خالی
+                $lastEntry = end($trafficEntries); // استفاده از end برای آخرین مورد معتبر
 
-            if (is_array($trafficData)) {
-                $dropbearData = json_decode(file_get_contents($dropbearJsonFilePath), true);
+                $trafficData = json_decode($lastEntry, true);
+                $traffic_base = env('TRAFFIC_BASE');
 
-                foreach ($trafficData as $value) {
-                    $PID = $value['PID'];
-                    $TX = round($value['TX'], 0);
-                    $RX = round($value['RX'], 0);
-                    $name = $value['name'];
+                if (is_array($trafficData)) {
+                    $dropbearData = json_decode(file_get_contents($dropbearJsonFilePath), true);
 
-                    if ($name == '/usr/sbin/dropbear') {
-                        $matchingDropbearUsers = array_filter($dropbearData, function ($item) use ($PID) {
-                            return isset($item['PID']) && $item['PID'] == $PID;
-                        });
+                    foreach ($trafficData as $value) {
+                        $PID = $value['PID'];
+                        $TX = round($value['TX'], 0);
+                        $RX = round($value['RX'], 0);
+                        $name = $value['name'];
 
-                        foreach ($matchingDropbearUsers as $item) {
-                            $username = $item['user'];
+                        if ($name == '/usr/sbin/dropbear') {
+                            $matchingDropbearUsers = array_filter($dropbearData, function ($item) use ($PID) {
+                                return isset($item['PID']) && $item['PID'] == $PID;
+                            });
 
-                            $traffic = Traffic::where('username', $username)->first();
-
-                            if ($traffic) {
-                                $userdownload = $traffic->download;
-                                $userupload = $traffic->upload;
-                                $usertotal = $traffic->total;
+                            foreach ($matchingDropbearUsers as $item) {
+                                $username = $item['user'];
 
                                 $rx = round(($RX / 10) / $traffic_base * 100);
                                 $tx = round(($TX / 10) / $traffic_base * 100);
                                 $tot = $rx + $tx;
 
-                                $lastdownload = $userdownload + $rx;
-                                $lastupload = $userupload + $tx;
-                                $lasttotal = $usertotal + $tot;
-
-                                if ($traffic->exists) {
-                                    $traffic->update([
-                                        'download' => $lastdownload,
-                                        'upload' => $lastupload,
-                                        'total' => $lasttotal,
-                                    ]);
-                                } else {
-                                    Traffic::create([
-                                        'username' => $username,
-                                        'download' => $lastdownload,
-                                        'upload' => $lastupload,
-                                        'total' => $lasttotal,
-                                    ]);
+                                $traffic = Traffic::where('username', $username)->first();
+                                if (!$traffic) {
+                                    continue;
                                 }
-                                $totalInEnv = floatval(env('TRAFFIC_SERVER', 0));
-                                $total = $totalInEnv + $lasttotal;
-                                Process::run("sed -i \"s/TRAFFIC_SERVER=.*/TRAFFIC_SERVER=$total/g\" /var/www/html/app/.env");
+
+                                // CAST is required because traffic columns are varchar in DB.
+                                Traffic::where('username', $username)->update([
+                                    'download' => DB::raw('CAST(download AS SIGNED) + ' . (int)$rx),
+                                    'upload' => DB::raw('CAST(upload AS SIGNED) + ' . (int)$tx),
+                                    'total' => DB::raw('CAST(total AS SIGNED) + ' . (int)$tot),
+                                ]);
+
+                                $deltaSum += (int)$tot;
                             }
                         }
                     }
                 }
             }
+
+            if ($deltaSum > 0) {
+                $current = (float) $this->readEnvValueFromFile('TRAFFIC_SERVER', '0');
+                $new = $current + (float) $deltaSum;
+                Process::run("sed -i \"s/TRAFFIC_SERVER=.*/TRAFFIC_SERVER=$new/g\" /var/www/html/app/.env");
+            }
+        } finally {
+            $this->releaseDbLock('xpanel:traffic');
         }
     }
 
     public function synstraffics()
     {
 
-        // Retrieve NetHogs process ID
-        $nethogsPID = trim(Process::run("pgrep nethogs")->output());
+        // Use MySQL GET_LOCK to prevent cron overlap across multiple panel servers.
+        if (!$this->acquireDbLock('xpanel:traffic')) {
+            return;
+        }
 
-        // Check if the traffic log file exists
-        $trafficLogFilePath = "/var/www/html/app/storage/out.json";
-        if (file_exists($trafficLogFilePath)) {
-            $trafficLog = file_get_contents($trafficLogFilePath);
-            $trafficEntries = preg_split("/\r\n|\n|\r/", $trafficLog);
-            $trafficEntries = array_filter($trafficEntries);
-            $lastEntry = end($trafficEntries);
-            $trafficData = json_decode($lastEntry, true);
+        try {
+            $deltaSum = 0;
 
-            if (is_array($trafficData)) {
-                $trafficBase = env('TRAFFIC_BASE');
-                $newarray = [];
+            // Retrieve NetHogs process ID
+            $nethogsPID = trim(Process::run("pgrep nethogs")->output());
 
-                foreach ($trafficData as $entry) {
-                    $TX = round($entry["TX"]);
-                    $RX = round($entry["RX"]);
-                    $PID = round($entry["PID"]);
-                    $name = preg_replace("/\\s+/", "", $entry["name"]);
+            // Check if the traffic log file exists
+            $trafficLogFilePath = "/var/www/html/app/storage/out.json";
+            if (file_exists($trafficLogFilePath)) {
+                $trafficLog = file_get_contents($trafficLogFilePath);
+                $trafficEntries = preg_split("/\r\n|\n|\r/", $trafficLog);
+                $trafficEntries = array_filter($trafficEntries);
+                $lastEntry = end($trafficEntries);
+                $trafficData = json_decode($lastEntry, true);
 
-                    // Filter out undesired names
-                    $filteredNames = ["sshd", "root", "/usr/bin/stunnel4", "unknown TCP", "/usr/sbin/apache2", "[net]", "[accepted]", "[rexeced]", "@notty", "root:sshd", "/sbin/sshd", "[priv]", "@pts/1"];
-                    if (empty($name) || in_array($name, $filteredNames) || ($RX < 1 && $TX < 1)) {
-                        continue;
-                    }
+                if (is_array($trafficData)) {
+                    $trafficBase = env('TRAFFIC_BASE');
+                    $newarray = [];
 
-                    // Remove "sshd:" prefix
-                    $name = str_replace("sshd:", "", $name);
+                    foreach ($trafficData as $entry) {
+                        $TX = round($entry["TX"]);
+                        $RX = round($entry["RX"]);
+                        $PID = round($entry["PID"]);
+                        $name = preg_replace("/\s+/", "", $entry["name"]);
 
-                    if (!empty($name)) {
-                        if (isset($newarray[$name])) {
-                            $newarray[$name]["TX"] += $TX;
-                            $newarray[$name]["RX"] += $RX;
-                            $newarray[$name]["PID"] += $PID;
-                        } else {
-                            $newarray[$name] = ["RX" => $RX, "TX" => $TX, "Total" => $RX + $TX, "PID" => $PID];
+                        // Filter out undesired names
+                        $filteredNames = ["sshd", "root", "/usr/bin/stunnel4", "unknown TCP", "/usr/sbin/apache2", "[net]", "[accepted]", "[rexeced]", "@notty", "root:sshd", "/sbin/sshd", "[priv]", "@pts/1"];
+                        if (empty($name) || in_array($name, $filteredNames) || ($RX < 1 && $TX < 1)) {
+                            continue;
+                        }
+
+                        // Remove "sshd:" prefix
+                        $name = str_replace("sshd:", "", $name);
+
+                        if (!empty($name)) {
+                            if (isset($newarray[$name])) {
+                                $newarray[$name]["TX"] += $TX;
+                                $newarray[$name]["RX"] += $RX;
+                                $newarray[$name]["PID"] += $PID;
+                            } else {
+                                $newarray[$name] = ["RX" => $RX, "TX" => $TX, "Total" => $RX + $TX, "PID" => $PID];
+                            }
                         }
                     }
-                }
 
-                foreach ($newarray as $username => $usr) {
-                    $traffic = Traffic::where('username', $username)->first();
-
-                    if ($traffic) {
-                        $userdownload = $traffic->download;
-                        $userupload = $traffic->upload;
-                        $usertotal = $traffic->total;
+                    foreach ($newarray as $username => $usr) {
+                        $traffic = Traffic::where('username', $username)->first();
+                        if (!$traffic) {
+                            continue;
+                        }
 
                         $rx = round($usr["RX"]);
                         $rx = ($rx / 10);
@@ -602,70 +608,100 @@ $day
                         $tx = round(($tx / $trafficBase) * 100);
 
                         $tot = $rx + $tx;
-                        $lastdownload = $userdownload + $rx;
-                        $lastupload = $userupload + $tx;
-                        $lasttotal = $usertotal + $tot;
 
-                        if (empty($traffic->username)) {
-                            Traffic::create([
-                                'username' => $username,
-                                'download' => $lastdownload,
-                                'upload' => $lastupload,
-                                'total' => $lasttotal
-                            ]);
-                        } else {
-                            Traffic::where('username', $username)
-                                ->update(['download' => $lastdownload, 'upload' => $lastupload, 'total' => $lasttotal]);
+                        // CAST is required because traffic columns are varchar in DB.
+                        Traffic::where('username', $username)->update([
+                            'download' => DB::raw('CAST(download AS SIGNED) + ' . (int)$rx),
+                            'upload' => DB::raw('CAST(upload AS SIGNED) + ' . (int)$tx),
+                            'total' => DB::raw('CAST(total AS SIGNED) + ' . (int)$tot),
+                        ]);
 
+                        $deltaSum += (int)$tot;
+                    }
+                }
+            }
+
+            if ($deltaSum > 0) {
+                $current = (float) $this->readEnvValueFromFile('TRAFFIC_SERVER', '0');
+                $new = $current + (float) $deltaSum;
+                Process::run("sed -i \"s/TRAFFIC_SERVER=.*/TRAFFIC_SERVER=$new/g\" /var/www/html/app/.env");
+            }
+
+            // Continue with the rest of the function for online users
+            $settings = Settings::find(1);
+            $multiuser = $settings->multiuser;
+            $portSSH = env('PORT_SSH');
+            $onlineUsers = $this->getOnlineSSHUsers($portSSH);
+
+            foreach ($onlineUsers as $user) {
+                $username = $user['username'];
+                $onlineCount = $user['onlineCount'];
+
+                $users = Users::where('username', $username)->get();
+
+                foreach ($users as $row) {
+                    $limitation = $row->multiuser ?: 0;
+                    $startdate = $row->start_date;
+                    $finishdate_one_connect = $row->date_one_connect;
+
+                    if (empty($startdate) && $onlineCount > 0) {
+                        $start_inp = now()->toDateString();
+                        $end_inp = now()->addDays($finishdate_one_connect)->toDateString();
+                        Users::where('username', $username)->update(['start_date' => $start_inp, 'end_date' => $end_inp]);
+                    }
+
+                    if ($limitation !== 0 && $onlineCount > $limitation) {
+                        if ($multiuser == 'on') {
+                            Process::run("sudo killall -u {$username}");
+                            Process::run("sudo pkill -u {$username}");
+                            Process::run("sudo timeout 10 pkill -u {$username}");
+                            Process::run("sudo timeout 10 killall -u {$username}");
                         }
-                        $totalInEnv = floatval(env('TRAFFIC_SERVER', 0));
-                        $total = $totalInEnv + $lasttotal;
-                        Process::run("sed -i \"s/TRAFFIC_SERVER=.*/TRAFFIC_SERVER=$total/g\" /var/www/html/app/.env");
                     }
                 }
-            }
-        }
 
-        // Continue with the rest of the function for online users
-        $settings = Settings::find(1);
-        $multiuser = $settings->multiuser;
-        $portSSH = env('PORT_SSH');
-        $onlineUsers = $this->getOnlineSSHUsers($portSSH);
-
-        foreach ($onlineUsers as $user) {
-            $username = $user['username'];
-            $onlineCount = $user['onlineCount'];
-
-            $users = Users::where('username', $username)->get();
-
-            foreach ($users as $row) {
-                $limitation = $row->multiuser ?: 0;
-                $startdate = $row->start_date;
-                $finishdate_one_connect = $row->date_one_connect;
-
-                if (empty($startdate) && $onlineCount > 0) {
-                    $start_inp = now()->toDateString();
-                    $end_inp = now()->addDays($finishdate_one_connect)->toDateString();
-                    Users::where('username', $username)->update(['start_date' => $start_inp, 'end_date' => $end_inp]);
-                }
-
-                if ($limitation !== 0 && $onlineCount > $limitation) {
-                    if ($multiuser == 'on') {
-                        Process::run("sudo killall -u {$username}");
-                        Process::run("sudo pkill -u {$username}");
-                        Process::run("sudo timeout 10 pkill -u {$username}");
-                        Process::run("sudo timeout 10 killall -u {$username}");
-                    }
-                }
+                Process::run("sudo kill -9 $nethogsPID");
+                Process::run("sudo killall -9 nethogs");
             }
 
-            Process::run("sudo kill -9 $nethogsPID");
-            Process::run("sudo killall -9 nethogs");
+            Process::run("sudo rm -rf $trafficLogFilePath");
+            Process::run("sudo nethogs -j -v3 -c6 > $trafficLogFilePath");
+            Process::run("sudo pkill nethogs");
+        } finally {
+            $this->releaseDbLock('xpanel:traffic');
+        }
+    }
+
+
+    private function acquireDbLock(string $name): bool
+    {
+        $result = DB::select('SELECT GET_LOCK(?, 0) AS lock_status', [$name]);
+
+        return isset($result[0]) && (int)$result[0]->lock_status === 1;
+    }
+
+    private function releaseDbLock(string $name): void
+    {
+        DB::select('SELECT RELEASE_LOCK(?)', [$name]);
+    }
+
+    private function readEnvValueFromFile(string $key, string $default = '0'): string
+    {
+        $envPath = base_path('.env');
+        if (!is_readable($envPath)) {
+            return $default;
         }
 
-        Process::run("sudo rm -rf $trafficLogFilePath");
-        Process::run("sudo nethogs -j -v3 -c6 > $trafficLogFilePath");
-        Process::run("sudo pkill nethogs");
+        $content = file_get_contents($envPath);
+        if ($content === false) {
+            return $default;
+        }
+
+        if (preg_match('/^' . preg_quote($key, '/') . '=(.*)$/m', $content, $matches)) {
+            return trim($matches[1]);
+        }
+
+        return $default;
     }
 
     private function getOnlineSSHUsers($portSSH)
@@ -699,7 +735,16 @@ $day
 
     public function check_traffic()
     {
-        ProController::check_traffic();
+        // ProController is ionCube-encoded in this repository, so keep distributed lock at call-site.
+        if (!$this->acquireDbLock('xpanel:traffic')) {
+            return;
+        }
+
+        try {
+            ProController::check_traffic();
+        } finally {
+            $this->releaseDbLock('xpanel:traffic');
+        }
     }
     public function check_hourly()
     {
