@@ -151,7 +151,7 @@ connect = 0.0.0.0:$sshport
             reboot
             ;;
         4)
-            bash <(curl -Ls https://github.com/xpanel-cp/XPanel-SSH-User-Management/raw/master/install.sh --ipv4)
+            bash <(curl -Ls https://github.com/Aryalleh/xp/raw/master/install.sh --ipv4)
             ;;
         5)
         echo "You accept the risk of removing the panel (y/n)"
@@ -172,7 +172,7 @@ connect = 0.0.0.0:$sshport
         ;;
         
         7)
-        bash <(curl -Ls https://github.com/xpanel-cp/XPanel-SSH-User-Management/raw/master/block_iran.sh --ipv4)
+        bash <(curl -Ls https://github.com/Aryalleh/xp/raw/master/block_iran.sh --ipv4)
         ;;
         8)
         sudo iptables -F
@@ -181,13 +181,13 @@ connect = 0.0.0.0:$sshport
         bash <(curl -Ls https://raw.githubusercontent.com/xpanel-cp/Dropbear-ssh/main/install.sh)
         ;;
         10)
-        bash <(curl -Ls https://raw.githubusercontent.com/xpanel-cp/XPanel-SSH-User-Management/master/wp-install.sh --ipv4)
+        bash <(curl -Ls https://raw.githubusercontent.com/Aryalleh/xp/master/wp-install.sh --ipv4)
         ;;
         11)
-        bash <(curl -Ls https://raw.githubusercontent.com/xpanel-cp/XPanel-SSH-User-Management/master/fix-call.sh --ipv4)
+        bash <(curl -Ls https://raw.githubusercontent.com/Aryalleh/xp/master/fix-call.sh --ipv4)
         ;; 
         12)
-        bash <(curl -Ls https://raw.githubusercontent.com/xpanel-cp/XPanel-SSH-User-Management/master/OT/singbox.sh --ipv4)
+        bash <(curl -Ls https://raw.githubusercontent.com/Aryalleh/xp/master/OT/singbox.sh --ipv4)
         ;;
 	13)
         bash <(curl -Ls https://raw.githubusercontent.com/teddysun/across/master/bbr.sh --ipv4)
