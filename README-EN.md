@@ -67,6 +67,7 @@ Websocket SSL Payload<br>
 :green_circle: IP Rotation <br>
 :green_circle: Sending subscription information to email <br>
 :green_circle: Addition of the SING-BOX kernel <br>
+:green_circle: Multi-Server Management (Master-Node) <br>
 
 
 ### Installation guide
@@ -109,6 +110,20 @@ With the above command you can install SSL on the panel **(First pay attention t
 4- Input the above command in the terminal and proceed with the installation<br>
 **SSL is now active on your selected port**
 
+### Multi-Server Management (Master-Node)
+You can configure one server as the **Master** and connect others as **Nodes**.
+In this setup, users created on the Master server are automatically synced to all Node servers.
+Traffic usage from all nodes is aggregated and displayed on the Master server.
+
+#### Setup Guide:
+1. Install XPanel on all servers.
+2. On each **Node** server, go to Settings -> API and generate a new API Token.
+3. Log in to the **Master** server panel.
+4. Select **Multi-Server** from the sidebar menu.
+5. Click **Add New Node** and enter the Node's details (IP, Port, API Token).
+6. Set status to Active and save.
+
+Now, any user actions (create, delete, renew) on the Master will be propagated to the Nodes.
 
 
 ### Supporting us :hearts:
