@@ -109,54 +109,8 @@ destination_directory="/var/www/"
   fi
 }
 wellcomeINSTALL() {
-  echo -e "${YELLOW}************ Select XPanel Version Nginx Web Server************"
-  echo -e "${GREEN}  1)XPanel v4.0 full free"
-  echo -e "${GREEN}  2)XPanel v3.9.9"
-  echo -e "${GREEN}  3)XPanel v3.9.7"
-  echo -e "${GREEN}  4)XPanel v3.9.6"
-  echo -e "${GREEN}  5)XPanel v3.9.4"
-  echo -e "${GREEN}  6)XPanel v3.9.1"
-  echo -e "${GREEN}  7)XPanel v3.8.7"
-  echo -e "${GREEN}  8)XPanel v3.8.6"
-  echo -e "${GREEN}  9)XPanel v3.8.5"
-  echo -e "${GREEN}  10)XPanel v3.7.9"
-  echo -ne "${GREEN}\nSelect Version : ${ENDCOLOR}"
-  read n
-  if [ "$n" != "" ]; then
-    if [ "$n" == "1" ]; then
-      linkd=https://api.github.com/repos/xpanel-cp/XPanel-SSH-User-Management/releases/tags/v4-0
-    fi
-    if [ "$n" == "2" ]; then
-      linkd=https://api.github.com/repos/xpanel-cp/XPanel-SSH-User-Management/releases/tags/v3-9-9
-    fi
-    if [ "$n" == "3" ]; then
-      linkd=https://api.github.com/repos/xpanel-cp/XPanel-SSH-User-Management/releases/tags/v3-9-7
-    fi
-    if [ "$n" == "4" ]; then
-      linkd=https://api.github.com/repos/xpanel-cp/XPanel-SSH-User-Management/releases/tags/v3-9-6
-    fi
-    if [ "$n" == "5" ]; then
-      linkd=https://api.github.com/repos/xpanel-cp/XPanel-SSH-User-Management/releases/tags/v3-9-4
-    fi
-    if [ "$n" == "6" ]; then
-      linkd=https://api.github.com/repos/xpanel-cp/XPanel-SSH-User-Management/releases/tags/v3-9-1
-    fi
-    if [ "$n" == "7" ]; then
-      linkd=https://api.github.com/repos/xpanel-cp/XPanel-SSH-User-Management/releases/tags/v3-8-7
-    fi
-    if [ "$n" == "8" ]; then
-      linkd=https://api.github.com/repos/xpanel-cp/XPanel-SSH-User-Management/releases/tags/v3-8-6
-    fi
-    if [ "$n" == "9" ]; then
-      linkd=https://api.github.com/repos/xpanel-cp/XPanel-SSH-User-Management/releases/tags/v3-8-5
-    fi
-    if [ "$n" == "10" ]; then
-      linkd=https://api.github.com/repos/xpanel-cp/XPanel-SSH-User-Management/releases/tags/v3-7-9
-    fi
-    
-  else
-    linkd=https://api.github.com/repos/xpanel-cp/XPanel-SSH-User-Management/releases/tags/v4-0
-  fi
+  echo -e "${YELLOW}************ Installing XPanel Multi-Server Edition ************"
+  echo -e "${GREEN}  Installing from Aryalleh/xp repository..."
 }
 userINPU() {
   echo -e "\nPlease input IP Server"
@@ -318,13 +272,20 @@ EOF
     else
       touch /var/www/xpanelport
     fi
-    link=$(sudo curl -Ls "$linkd" | grep '"browser_download_url":' | sed -E 's/.*"([^"]+)".*/\1/')
-    sudo wget -O /var/www/html/update.zip $link
-    sudo unzip -o /var/www/html/update.zip -d /var/www/html/ &
+
+    # Clone from Aryalleh/xp
+    sudo git clone https://github.com/Aryalleh/xp.git /var/www/html/temp_repo
+    if [ -d "/var/www/html/temp_repo/Web Panel" ]; then
+        sudo cp -r "/var/www/html/temp_repo/Web Panel/"* /var/www/html/
+    else
+        sudo cp -r /var/www/html/temp_repo/* /var/www/html/
+    fi
+    sudo rm -rf /var/www/html/temp_repo
     wait
-    sudo wget -4 -O /usr/local/bin/cronx https://raw.githubusercontent.com/xpanel-cp/XPanel-SSH-User-Management/master/cronx
+
+    sudo wget -4 -O /usr/local/bin/cronx https://raw.githubusercontent.com/Aryalleh/xp/master/cronx
     chmod +x /usr/local/bin/cronx
-    sudo wget -4 -O /usr/local/bin/cronxfixed https://raw.githubusercontent.com/xpanel-cp/XPanel-SSH-User-Management/master/cronxfixed
+    sudo wget -4 -O /usr/local/bin/cronxfixed https://raw.githubusercontent.com/Aryalleh/xp/master/cronxfixed
     chmod +x /usr/local/bin/cronxfixed
     sed -i 's@zend_extension = /usr/local/ioncube/ioncube_loader_lin_8.1.so@@' /etc/php/8.1/cli/php.ini
     bash <(curl -Ls https://raw.githubusercontent.com/xpanel-cp/XPanel-SSH-User-Management/master/ioncube.sh --ipv4)
@@ -768,12 +729,12 @@ ENDOFFILE
   wait
   sudo mkdir -p /xpanel
   wait
-  curl -sL -o /usr/local/bin/xp_user_limit https://raw.githubusercontent.com/xpanel-cp/XPanel-SSH-User-Management/master/xp_user_limit.sh
+  curl -sL -o /usr/local/bin/xp_user_limit https://raw.githubusercontent.com/Aryalleh/xp/master/xp_user_limit.sh
   chmod +x /usr/local/bin/xp_user_limit
   echo 'www-data ALL=(ALL:ALL) NOPASSWD:/usr/local/bin/xp_user_limit' | sudo EDITOR='tee -a' visudo
   wait
-  curl -o /root/xpanel.sh https://raw.githubusercontent.com/xpanel-cp/XPanel-SSH-User-Management/master/cli.sh
-  sudo wget -4 -O /usr/local/bin/xpanel https://raw.githubusercontent.com/xpanel-cp/XPanel-SSH-User-Management/master/cli.sh
+  curl -o /root/xpanel.sh https://raw.githubusercontent.com/Aryalleh/xp/master/cli.sh
+  sudo wget -4 -O /usr/local/bin/xpanel https://raw.githubusercontent.com/Aryalleh/xp/master/cli.sh
   chmod +x /usr/local/bin/xpanel
   chown www-data:www-data /var/www/html/example/
   chown www-data:www-data /var/www/html/example/index.php

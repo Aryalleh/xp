@@ -83,6 +83,14 @@
                         <span class="pc-mtext">{{__('menu-online')}}</span>
                     </a>
                 </li>
+                <li class="pc-item">
+                    <a href="{{route('nodes.index')}}" class="pc-link">
+                        <span class="pc-micon">
+                            <i data-feather="server"></i>
+                        </span>
+                        <span class="pc-mtext">Multi-Server</span>
+                    </a>
+                </li>
                 <li class="pc-item pc-caption">
                     <label>{{__('menu-other')}}</label>
                     <i class="ti ti-chart-arcs"></i>
